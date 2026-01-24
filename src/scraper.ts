@@ -79,93 +79,94 @@ async function doScrape(cookiesJson: string): Promise<ContraJob[]> {
 
 async function extractJobsFromRelay(page: Page): Promise<ContraJob[]> {
   try {
-    const jobs = await page.evaluate(() => {
+    const result = await page.evaluate(() => {
       const scripts = document.querySelectorAll('script[type="application/json"]');
-      const results: ContraJob[] = [];
+      const jobs: Array<{ id: string; title: string; company?: string; budget?: string; url: string; postedAt?: string }> = [];
       const seen = new Set<string>();
 
-      for (const script of scripts) {
+      for (let i = 0; i < scripts.length; i++) {
+        const script = scripts[i];
         try {
-          const data = JSON.parse(script.textContent || "");
+          const text = script.textContent || "";
+          if (!text.includes("relayRecordMap")) continue;
+          const data = JSON.parse(text);
+          if (!data || !data.publicAppConfiguration || !data.publicAppConfiguration.relayRecordMap) continue;
+          const config = data.publicAppConfiguration;
 
-          // Look for Relay record map in multiple locations
-          const findRecordMap = (obj: unknown): Record<string, unknown> | null => {
-            if (!obj || typeof obj !== "object") return null;
-            const o = obj as Record<string, unknown>;
-            if (o.relayRecordMap) return o.relayRecordMap as Record<string, unknown>;
-            // Direct publicAppConfiguration path
-            if (o.publicAppConfiguration && typeof o.publicAppConfiguration === "object") {
-              const config = o.publicAppConfiguration as Record<string, unknown>;
-              if (config.relayRecordMap) return config.relayRecordMap as Record<string, unknown>;
-            }
-            // Nested under props.pageProps
-            if (o.props && typeof o.props === "object") {
-              const props = o.props as Record<string, unknown>;
-              if (props.pageProps && typeof props.pageProps === "object") {
-                const pageProps = props.pageProps as Record<string, unknown>;
-                if (pageProps.publicAppConfiguration && typeof pageProps.publicAppConfiguration === "object") {
-                  const config = pageProps.publicAppConfiguration as Record<string, unknown>;
-                  if (config.relayRecordMap) return config.relayRecordMap as Record<string, unknown>;
-                }
-              }
-            }
-            return null;
-          };
+          const recordMap = config.relayRecordMap as Record<string, Record<string, unknown>>;
 
-          const recordMap = findRecordMap(data);
-          if (!recordMap) continue;
-
-          // Build a lookup for Organization names
+          // Build lookups for orgs and budgets
           const orgNames: Record<string, string> = {};
-          for (const [, value] of Object.entries(recordMap)) {
-            const record = value as Record<string, unknown>;
-            if (record?.__typename === "Organization" && record.name) {
+          const budgets: Record<string, string> = {};
+
+          for (const key of Object.keys(recordMap)) {
+            const record = recordMap[key];
+            if (!record || !record.__typename) continue;
+
+            if (record.__typename === "Organization" && record.name) {
               orgNames[record.__id as string] = (record.name as string).trim();
+            }
+
+            if (record.__typename === "FixedPriceJobBudget" || record.__typename === "HourlyRateJobBudget" || record.__typename === "MonthlyRateJobBudget") {
+              const minFee = record.feeMin as string | undefined;
+              const maxFee = record.feeMax as string | undefined;
+              const min = minFee ? Math.round(parseFloat(minFee.replace("USD:", ""))) : 0;
+              const max = maxFee ? Math.round(parseFloat(maxFee.replace("USD:", ""))) : 0;
+              if (min && max) {
+                const suffix = record.__typename === "HourlyRateJobBudget" ? "/hr" : record.__typename === "MonthlyRateJobBudget" ? "/mo" : "";
+                budgets[record.__id as string] = "$" + min.toLocaleString() + " - $" + max.toLocaleString() + suffix;
+              }
             }
           }
 
           // Extract Job records
-          for (const [, value] of Object.entries(recordMap)) {
-            const record = value as Record<string, unknown>;
-            if (record?.__typename !== "Job") continue;
+          for (const key of Object.keys(recordMap)) {
+            const record = recordMap[key];
+            if (!record || record.__typename !== "Job") continue;
 
             const title = record.title as string;
             if (!title) continue;
 
-            const id = (record.id as string) || (record.slug as string);
+            const id = (record.id as string) || (record.slug as string) || key;
             if (seen.has(id)) continue;
             seen.add(id);
 
             const slug = record.slug as string;
 
-            // Resolve company name from organization ref
+            // Resolve company
             let company: string | undefined;
             if (record.organization && typeof record.organization === "object") {
               const orgRef = (record.organization as Record<string, unknown>).__ref as string;
-              if (orgRef && orgNames[orgRef]) {
-                company = orgNames[orgRef];
-              }
+              if (orgRef) company = orgNames[orgRef];
             }
 
-            results.push({
+            // Resolve budget
+            let budget: string | undefined;
+            if (record.budget && typeof record.budget === "object") {
+              const budgetRef = (record.budget as Record<string, unknown>).__ref as string;
+              if (budgetRef) budget = budgets[budgetRef];
+            }
+
+            jobs.push({
               id,
               title,
               company,
+              budget,
               url: `https://contra.com/opportunity/${slug}`,
-              postedAt: record.createdAt as string || undefined,
+              postedAt: (record.createdAt as string) || undefined,
             });
           }
         } catch {
-          // Skip invalid JSON
+          // Skip invalid script tags
         }
       }
 
-      return results;
+      return jobs;
     });
 
-    return jobs;
+    return result;
   } catch (error) {
-    console.error("Relay extraction error:", error);
+    console.error("Relay extraction error:", String(error));
     return [];
   }
 }
