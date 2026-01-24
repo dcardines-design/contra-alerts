@@ -1,12 +1,15 @@
 {
   "keywords_include": [
-    "designer",
-    "figma",
+    "ui design",
+    "ux design",
+    "ui/ux",
     "product design",
-    "ux",
-    "ui",
-    "brand"
+    "web design",
+    "saas design",
+    "mobile app design",
+    "app design",
+    "figma"
   ],
   "keywords_exclude": [],
-  "notification_email": ""
+  "notification_email": "dcardinesiii@gmail.com"
 }

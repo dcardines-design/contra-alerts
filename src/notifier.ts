@@ -21,12 +21,13 @@ export async function sendNotification(
     .map(
       (job) => `
       <tr>
-        <td style="padding: 12px; border-bottom: 1px solid #eee;">
-          <a href="${job.url}" style="color: #2563eb; text-decoration: none; font-weight: 500;">
+        <td style="padding: 20px 24px; border-bottom: 1px solid #1a1a1a;">
+          <a href="${job.url}" style="color: #ffffff; text-decoration: none; font-weight: 500; font-size: 16px; letter-spacing: -0.2px;">
             ${escapeHtml(job.title)}
           </a>
-          ${job.company ? `<br><span style="color: #666; font-size: 14px;">${escapeHtml(job.company)}</span>` : ""}
-          ${job.postedAt ? `<br><span style="color: #999; font-size: 12px;">${formatDate(job.postedAt)}</span>` : ""}
+          ${job.company ? `<div style="color: #888; font-size: 13px; margin-top: 6px;">${escapeHtml(job.company)}</div>` : ""}
+          ${job.budget ? `<div style="color: #4ade80; font-size: 13px; margin-top: 4px;">${escapeHtml(job.budget)}</div>` : ""}
+          ${job.postedAt ? `<div style="color: #555; font-size: 12px; margin-top: 4px;">${formatDate(job.postedAt)}</div>` : ""}
         </td>
       </tr>
     `
@@ -40,18 +41,18 @@ export async function sendNotification(
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1">
     </head>
-    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background: #f5f5f5;">
-      <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-        <div style="background: #2563eb; color: white; padding: 20px;">
-          <h1 style="margin: 0; font-size: 20px;">🔔 New Contra Jobs Alert</h1>
-          <p style="margin: 8px 0 0; opacity: 0.9; font-size: 14px;">${jobs.length} new job${jobs.length === 1 ? "" : "s"} matching your filters</p>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 32px 16px; background: #000000;">
+      <div style="max-width: 560px; margin: 0 auto; background: #0a0a0a; border-radius: 12px; overflow: hidden; border: 1px solid #1a1a1a;">
+        <div style="padding: 32px 24px 24px;">
+          <h1 style="margin: 0; font-size: 18px; font-weight: 600; color: #ffffff; letter-spacing: -0.3px;">New Jobs</h1>
+          <p style="margin: 6px 0 0; color: #666; font-size: 13px;">${jobs.length} match${jobs.length === 1 ? "" : "es"} found</p>
         </div>
         <table style="width: 100%; border-collapse: collapse;">
           ${jobsHtml}
         </table>
-        <div style="padding: 16px; background: #f9fafb; text-align: center; color: #666; font-size: 12px;">
-          <a href="https://contra.com/discover?view=projects&sort=newest" style="color: #2563eb; text-decoration: none;">
-            View all jobs on Contra →
+        <div style="padding: 20px 24px; text-align: center;">
+          <a href="https://contra.com/jobs" style="color: #888; text-decoration: none; font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase;">
+            View all on Contra &rarr;
           </a>
         </div>
       </div>
@@ -71,7 +72,7 @@ export async function sendNotification(
   const { error } = await resend.emails.send({
     from: "Contra Alerts <onboarding@resend.dev>",
     to: toEmail,
-    subject: `🔔 ${jobs.length} New Contra Job${jobs.length === 1 ? "" : "s"} Found`,
+    subject: `${jobs.length} new job${jobs.length === 1 ? "" : "s"} on Contra`,
     html,
     text,
   });

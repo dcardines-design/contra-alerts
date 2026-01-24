@@ -1,11 +1,17 @@
 import { chromium, Browser, Page } from "playwright";
 import type { ContraJob } from "./types.js";
 
-const CONTRA_URL = "https://contra.com/discover?view=projects&sort=newest";
+const JOBS_URL = "https://contra.com/jobs";
 const TIMEOUT = 45000;
 const MAX_RETRIES = 1;
 
 export async function scrapeContraJobs(): Promise<ContraJob[]> {
+  const cookies = process.env.CONTRA_COOKIES;
+
+  if (!cookies) {
+    throw new Error("CONTRA_COOKIES environment variable is required");
+  }
+
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -13,7 +19,7 @@ export async function scrapeContraJobs(): Promise<ContraJob[]> {
       if (attempt > 0) {
         console.log(`Retry attempt ${attempt}...`);
       }
-      return await doScrape();
+      return await doScrape(cookies);
     } catch (error) {
       lastError = error as Error;
       console.error(`Scrape attempt ${attempt + 1} failed:`, error);
@@ -23,7 +29,7 @@ export async function scrapeContraJobs(): Promise<ContraJob[]> {
   throw lastError;
 }
 
-async function doScrape(): Promise<ContraJob[]> {
+async function doScrape(cookiesJson: string): Promise<ContraJob[]> {
   let browser: Browser | null = null;
 
   try {
@@ -32,24 +38,34 @@ async function doScrape(): Promise<ContraJob[]> {
       userAgent:
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     });
-    const page = await context.newPage();
 
+    // Parse and set cookies
+    const cookies = JSON.parse(cookiesJson);
+    await context.addCookies(cookies);
+
+    const page = await context.newPage();
     page.setDefaultTimeout(TIMEOUT);
 
-    console.log("Navigating to Contra...");
-    await page.goto(CONTRA_URL, { waitUntil: "networkidle" });
+    // Navigate to jobs page
+    console.log("Navigating to jobs page...");
+    await page.goto(JOBS_URL, { waitUntil: "networkidle" });
 
-    // Wait for content to load
-    await page.waitForSelector('a[href*="/p/"]', { timeout: 15000 }).catch(() => {
-      console.log("No project links found via selector, trying alternative...");
-    });
+    // Check if we're logged in (not redirected to login)
+    if (page.url().includes("log-in")) {
+      throw new Error("Cookies expired - please refresh CONTRA_COOKIES");
+    }
 
-    // Try to extract from Relay cache first
-    let jobs = await extractFromRelayCache(page);
+    console.log("Logged in successfully via cookies");
+
+    // Wait for jobs to load
+    await page.waitForTimeout(2000);
+
+    // Extract jobs
+    let jobs = await extractJobsFromRelay(page);
 
     if (jobs.length === 0) {
-      console.log("Relay cache extraction failed, falling back to DOM parsing...");
-      jobs = await extractFromDOM(page);
+      console.log("Relay extraction failed, trying DOM parsing...");
+      jobs = await extractJobsFromDOM(page);
     }
 
     console.log(`Found ${jobs.length} jobs`);
@@ -61,47 +77,83 @@ async function doScrape(): Promise<ContraJob[]> {
   }
 }
 
-async function extractFromRelayCache(page: Page): Promise<ContraJob[]> {
+async function extractJobsFromRelay(page: Page): Promise<ContraJob[]> {
   try {
     const jobs = await page.evaluate(() => {
       const scripts = document.querySelectorAll('script[type="application/json"]');
       const results: ContraJob[] = [];
+      const seen = new Set<string>();
 
       for (const script of scripts) {
         try {
           const data = JSON.parse(script.textContent || "");
 
-          // Look for Relay record map
-          const recordMap =
-            data?.props?.pageProps?.publicAppConfiguration?.relayRecordMap ||
-            data?.publicAppConfiguration?.relayRecordMap ||
-            data?.relayRecordMap;
-
-          if (recordMap && typeof recordMap === "object") {
-            for (const [key, value] of Object.entries(recordMap)) {
-              const record = value as Record<string, unknown>;
-              if (
-                record?.__typename === "PortfolioProject" ||
-                record?.__typename === "Project"
-              ) {
-                const slug = (record.slug as string) || key;
-                const title = (record.title as string) || (record.name as string) || "";
-                const company =
-                  (record.clientName as string) ||
-                  (record.companyName as string) ||
-                  undefined;
-
-                if (title && slug) {
-                  results.push({
-                    id: slug,
-                    title,
-                    company,
-                    url: `https://contra.com/p/${slug}`,
-                    postedAt: (record.createdAt as string) || undefined,
-                  });
+          // Look for Relay record map in multiple locations
+          const findRecordMap = (obj: unknown): Record<string, unknown> | null => {
+            if (!obj || typeof obj !== "object") return null;
+            const o = obj as Record<string, unknown>;
+            if (o.relayRecordMap) return o.relayRecordMap as Record<string, unknown>;
+            // Direct publicAppConfiguration path
+            if (o.publicAppConfiguration && typeof o.publicAppConfiguration === "object") {
+              const config = o.publicAppConfiguration as Record<string, unknown>;
+              if (config.relayRecordMap) return config.relayRecordMap as Record<string, unknown>;
+            }
+            // Nested under props.pageProps
+            if (o.props && typeof o.props === "object") {
+              const props = o.props as Record<string, unknown>;
+              if (props.pageProps && typeof props.pageProps === "object") {
+                const pageProps = props.pageProps as Record<string, unknown>;
+                if (pageProps.publicAppConfiguration && typeof pageProps.publicAppConfiguration === "object") {
+                  const config = pageProps.publicAppConfiguration as Record<string, unknown>;
+                  if (config.relayRecordMap) return config.relayRecordMap as Record<string, unknown>;
                 }
               }
             }
+            return null;
+          };
+
+          const recordMap = findRecordMap(data);
+          if (!recordMap) continue;
+
+          // Build a lookup for Organization names
+          const orgNames: Record<string, string> = {};
+          for (const [, value] of Object.entries(recordMap)) {
+            const record = value as Record<string, unknown>;
+            if (record?.__typename === "Organization" && record.name) {
+              orgNames[record.__id as string] = (record.name as string).trim();
+            }
+          }
+
+          // Extract Job records
+          for (const [, value] of Object.entries(recordMap)) {
+            const record = value as Record<string, unknown>;
+            if (record?.__typename !== "Job") continue;
+
+            const title = record.title as string;
+            if (!title) continue;
+
+            const id = (record.id as string) || (record.slug as string);
+            if (seen.has(id)) continue;
+            seen.add(id);
+
+            const slug = record.slug as string;
+
+            // Resolve company name from organization ref
+            let company: string | undefined;
+            if (record.organization && typeof record.organization === "object") {
+              const orgRef = (record.organization as Record<string, unknown>).__ref as string;
+              if (orgRef && orgNames[orgRef]) {
+                company = orgNames[orgRef];
+              }
+            }
+
+            results.push({
+              id,
+              title,
+              company,
+              url: `https://contra.com/opportunity/${slug}`,
+              postedAt: record.createdAt as string || undefined,
+            });
           }
         } catch {
           // Skip invalid JSON
@@ -113,60 +165,47 @@ async function extractFromRelayCache(page: Page): Promise<ContraJob[]> {
 
     return jobs;
   } catch (error) {
-    console.error("Relay cache extraction error:", error);
+    console.error("Relay extraction error:", error);
     return [];
   }
 }
 
-async function extractFromDOM(page: Page): Promise<ContraJob[]> {
+async function extractJobsFromDOM(page: Page): Promise<ContraJob[]> {
   try {
-    // Wait a bit more for dynamic content
-    await page.waitForTimeout(2000);
-
     const jobs = await page.evaluate(() => {
       const results: ContraJob[] = [];
       const seen = new Set<string>();
 
-      // Find all project links
-      const links = document.querySelectorAll('a[href*="/p/"]');
+      // Find job cards by the OpportunityPost component
+      const cards = document.querySelectorAll('[data-sentry-component="OpportunityPost"]');
 
-      for (const link of links) {
-        const href = link.getAttribute("href");
-        if (!href || !href.startsWith("/p/")) continue;
+      for (const card of cards) {
+        // Extract company from aria-label: "View opportunity from {Company}"
+        const ariaLabel = card.getAttribute("aria-label") || "";
+        const companyMatch = ariaLabel.match(/View opportunity from\s+(.+)/);
+        const company = companyMatch ? companyMatch[1].trim() : undefined;
 
-        const slug = href.replace("/p/", "").split("?")[0].split("/")[0];
-        if (!slug || seen.has(slug)) continue;
-        seen.add(slug);
+        // Extract title from the <p> element within the card
+        const titleEl = card.querySelector("p");
+        const title = titleEl?.textContent?.trim() || "";
+        if (!title) continue;
 
-        // Try to find title - look for headings or text content
-        const card = link.closest("article") || link.closest("div");
-        let title = "";
-        let company: string | undefined;
+        // Extract budget - look for text containing $ sign
+        const cardText = card.innerText || "";
+        const budgetMatch = cardText.match(/(\$[\d,]+ - \$[\d,]+(?:\/hr|\/mo)?[^\\n]*)/);
+        const budget = budgetMatch ? budgetMatch[1].trim() : undefined;
 
-        if (card) {
-          // Look for heading elements
-          const heading = card.querySelector("h2, h3, h4, [class*='title']");
-          if (heading) {
-            title = heading.textContent?.trim() || "";
-          }
-
-          // Look for company/creator name
-          const companyEl = card.querySelector("[class*='company'], [class*='creator'], [class*='name']");
-          if (companyEl) {
-            company = companyEl.textContent?.trim();
-          }
-        }
-
-        // Fallback: use link text or slug
-        if (!title) {
-          title = link.textContent?.trim() || slug.replace(/-/g, " ");
-        }
+        // Generate a stable ID from the title
+        const id = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").substring(0, 80);
+        if (seen.has(id)) continue;
+        seen.add(id);
 
         results.push({
-          id: slug,
+          id,
           title,
           company,
-          url: `https://contra.com/p/${slug}`,
+          budget,
+          url: `https://contra.com/jobs`,
         });
       }
 

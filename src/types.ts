@@ -2,6 +2,7 @@ export interface ContraJob {
   id: string;
   title: string;
   company?: string;
+  budget?: string;
   url: string;
   postedAt?: string;
 }
