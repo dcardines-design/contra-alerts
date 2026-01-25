@@ -127,7 +127,8 @@ async function extractJobsFromRelay(page: Page): Promise<ContraJob[]> {
             const title = record.title as string;
             if (!title) continue;
 
-            const id = (record.id as string) || (record.slug as string) || key;
+            // Prefer slug (stable) over id (volatile base64 that can change)
+            const id = (record.slug as string) || (record.id as string) || key;
             if (seen.has(id)) continue;
             seen.add(id);
 
@@ -192,7 +193,7 @@ async function extractJobsFromDOM(page: Page): Promise<ContraJob[]> {
         if (!title) continue;
 
         // Extract budget - look for text containing $ sign
-        const cardText = card.innerText || "";
+        const cardText = (card as HTMLElement).innerText || "";
         const budgetMatch = cardText.match(/(\$[\d,]+ - \$[\d,]+(?:\/hr|\/mo)?[^\\n]*)/);
         const budget = budgetMatch ? budgetMatch[1].trim() : undefined;
 

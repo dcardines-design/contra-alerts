@@ -33,8 +33,12 @@ async function main() {
   const matchingJobs = filterJobs(allJobs, config);
   console.log(`Jobs matching filters: ${matchingJobs.length}`);
 
-  // Find new jobs (not seen before)
-  const newJobs = matchingJobs.filter((job) => !seenJobs.jobs[job.id]);
+  // Find new jobs (not seen before by ID or title)
+  const normalizeTitle = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").substring(0, 100);
+  const newJobs = matchingJobs.filter((job) => {
+    const titleKey = normalizeTitle(job.title);
+    return !seenJobs.jobs[job.id] && !seenJobs.titles[titleKey];
+  });
   console.log(`New jobs: ${newJobs.length}`);
 
   // Send notification if there are new jobs
@@ -55,16 +59,20 @@ async function main() {
     console.log("No new jobs to notify about");
   }
 
-  // Update seen jobs
+  // Update seen jobs (track both IDs and titles)
   const now = new Date().toISOString();
   for (const job of allJobs) {
     if (!seenJobs.jobs[job.id]) {
       seenJobs.jobs[job.id] = { first_seen: now };
     }
+    const titleKey = normalizeTitle(job.title);
+    if (!seenJobs.titles[titleKey]) {
+      seenJobs.titles[titleKey] = { first_seen: now };
+    }
   }
   seenJobs.last_run = now;
 
-  // Prune old jobs (keep last 30 days worth)
+  // Prune old jobs and titles (keep last 30 days worth)
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   const prunedJobs: Record<string, { first_seen: string }> = {};
   for (const [id, data] of Object.entries(seenJobs.jobs)) {
@@ -73,6 +81,14 @@ async function main() {
     }
   }
   seenJobs.jobs = prunedJobs;
+
+  const prunedTitles: Record<string, { first_seen: string }> = {};
+  for (const [title, data] of Object.entries(seenJobs.titles)) {
+    if (data.first_seen >= thirtyDaysAgo) {
+      prunedTitles[title] = data;
+    }
+  }
+  seenJobs.titles = prunedTitles;
 
   // Save seen jobs
   saveSeenJobs(seenJobs);
@@ -103,6 +119,7 @@ function loadConfig(): Config {
 function loadSeenJobs(): SeenJobs {
   const defaultSeenJobs: SeenJobs = {
     jobs: {},
+    titles: {},
     last_run: "",
   };
 

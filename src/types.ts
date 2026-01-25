@@ -15,5 +15,6 @@ export interface Config {
 
 export interface SeenJobs {
   jobs: Record<string, { first_seen: string }>;
+  titles: Record<string, { first_seen: string }>;
   last_run: string;
 }
