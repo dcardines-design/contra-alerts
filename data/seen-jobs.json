@@ -578,6 +578,9 @@
     },
     "2ARLU7NR-motion-graphics-designer-for-software-explainer-video": {
       "first_seen": "2026-01-26T19:42:29.651Z"
+    },
+    "FoMRNXYe-framer-designer": {
+      "first_seen": "2026-01-26T20:47:26.687Z"
     }
   },
   "titles": {
@@ -757,7 +760,10 @@
     },
     "motion-graphics-designer-for-software-explainer-video": {
       "first_seen": "2026-01-26T19:42:29.651Z"
+    },
+    "framer-designer": {
+      "first_seen": "2026-01-26T20:47:26.687Z"
     }
   },
-  "last_run": "2026-01-26T20:16:36.144Z"
+  "last_run": "2026-01-26T20:47:26.687Z"
 }
