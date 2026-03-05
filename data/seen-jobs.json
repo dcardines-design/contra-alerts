@@ -1,49 +1,5 @@
 {
-  "jobs": {
-    "AggFMULe-framer-designer-needed-homepage-contact-page": {
-      "first_seen": "2026-01-26T09:55:08.337Z"
-    },
-    "bBkeO2Yg-framer-developer-portfolio-template-customization-and-launch": {
-      "first_seen": "2026-01-26T11:40:25.838Z"
-    },
-    "FUNRFFMB-framer-designer-for-high-performance-landing-page": {
-      "first_seen": "2026-01-26T16:58:54.239Z"
-    },
-    "XqXYqmsA-framer-developer-for-website-projects": {
-      "first_seen": "2026-01-26T18:22:58.915Z"
-    },
-    "2ARLU7NR-motion-graphics-designer-for-software-explainer-video": {
-      "first_seen": "2026-01-26T19:42:29.651Z"
-    },
-    "FoMRNXYe-framer-designer": {
-      "first_seen": "2026-01-26T20:47:26.687Z"
-    },
-    "sBZOsXYB-freelance-framer-expert-for-rapid-development-and-design": {
-      "first_seen": "2026-01-26T21:15:33.092Z"
-    }
-  },
-  "titles": {
-    "framer-designer-needed-homepage-contact-page": {
-      "first_seen": "2026-01-26T09:55:08.337Z"
-    },
-    "framer-developer-portfolio-template-customization-launch": {
-      "first_seen": "2026-01-26T11:40:25.838Z"
-    },
-    "framer-designer-for-high-performance-landing-page": {
-      "first_seen": "2026-01-26T16:58:54.239Z"
-    },
-    "framer-developer-for-website-projects": {
-      "first_seen": "2026-01-26T18:22:58.915Z"
-    },
-    "motion-graphics-designer-for-software-explainer-video": {
-      "first_seen": "2026-01-26T19:42:29.651Z"
-    },
-    "framer-designer": {
-      "first_seen": "2026-01-26T20:47:26.687Z"
-    },
-    "freelance-framer-expert-for-rapid-development-and-design": {
-      "first_seen": "2026-01-26T21:15:33.092Z"
-    }
-  },
-  "last_run": "2026-02-25T03:57:04.522Z"
+  "jobs": {},
+  "titles": {},
+  "last_run": "2026-03-05T13:55:39.984Z"
 }
